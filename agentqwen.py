@@ -1,22 +1,5 @@
 import gradio as gr
-from model_utils import preprocess_image, preprocess_audio, call_multimodal_model
-
-def process_inputs(user_input, chat_history):
-    """Process user inputs and call the multimodal model."""
-    text = user_input.get("text", "")
-    image = user_input.get("image", None)
-    audio = user_input.get("audio", None)
-
-    # Preprocess image and audio if provided
-    processed_image = preprocess_image(image) if image else None
-    processed_audio = preprocess_audio(audio) if audio else None
-
-    # Call the multimodal model
-    response = call_multimodal_model(text, processed_image, processed_audio)
-
-    # Update chat history
-    chat_history.append((text, response))
-    return chat_history, None, None
+from model_utils import process_input, process_multimodal_textbox
 
 custom_css = """
 /* General container styling */
@@ -28,7 +11,7 @@ custom_css = """
 
 /* Chatbot styling */
 .gr-chatbot {
-    background-color: #1C2526; /* Dark gray for contrast */
+    background-color: #1C2526; /* Dark gray for contrast Provincia di Savona*/
     border: 2px solid #F60; /* Geek Squad Orange */
     border-radius: 10px;
     padding: 10px;
@@ -100,33 +83,60 @@ p {
 with gr.Blocks(css=custom_css) as demo:
     with gr.Column(variant="compact"):
         gr.Markdown("# Agent Qwen")
-        gr.Markdown("You can interact with Agent Qwen using text, images, and audio files. Make sure to provide as much "
-                    "detail about your issue.")
-        chatbot = gr.Chatbot(label="Agent Qwen", height="80vh", autoscroll=True, type='messages')
+        gr.Markdown(
+            "You can interact with Agent Qwen using text, images, audio, or video files. Provide as much "
+            "detail about your device issue as possible. Note: Audio responses may not always be available."
+        )
+        chatbot = gr.Chatbot(label="Agent Qwen", height="80vh", autoscroll=True, type="messages")
         with gr.Row():
-            user_input = gr.MultimodalTextbox(show_label= False, placeholder="Enter your message here...",
-                                              sources=['upload', 'microphone'])
+            user_input = gr.MultimodalTextbox(
+                show_label=False,
+                placeholder="Enter your message here...",
+                sources=["upload", "microphone"],
+            )
+        audio_output = gr.Audio(label="Agent Qwen's Response", autoplay=True)
+        clear_btn = gr.Button("Clear")
 
-
-    # Clear button
-    clear_btn = gr.Button("Clear")
-
-    # State to maintain chat history
-    chat_history = gr.State([])
 
     # Event handlers
+    def handle_user_input(multimodal_input, chat_history):
+        try:
+            # Process MultimodalTextbox input
+            image, audio, video, text = process_multimodal_textbox(multimodal_input)
+
+            # Call backend to process input
+            new_chat_history, text_response, audio_path = process_input(
+                image, audio, video, text, chat_history
+            )
+
+            # Return updated components
+            return new_chat_history, {"text": "", "files": []}, audio_path
+        except Exception as e:
+            # Display error in chatbot with correct message format
+            error_message = f"Error processing input: {str(e)}"
+            if not isinstance(chat_history, list):
+                chat_history = []
+            new_chat_history = chat_history + [{"role": "assistant", "content": error_message}]
+            return new_chat_history, {"text": "", "files": []}, None
+
+
     user_input.submit(
-        fn=process_inputs,
-        inputs=[user_input, chat_history],
-        outputs=[chatbot, user_input]
+        fn=handle_user_input,
+        inputs=[user_input, chatbot],
+        outputs=[chatbot, user_input, audio_output],
+        queue=True
     )
+
+
+    def clear_chat():
+        return [], {"text": "", "files": []}, None
+
 
     clear_btn.click(
-        fn=lambda: ([], None, []),
+        fn=clear_chat,
         inputs=None,
-        outputs=[chatbot, user_input, chat_history]
+        outputs=[chatbot, user_input, audio_output],
+        queue=False
     )
 
-# Launch the interface
-if __name__ == "__main__":
-    demo.launch(inbrowser=True, share=True)
+demo.launch(inbrowser=True)
