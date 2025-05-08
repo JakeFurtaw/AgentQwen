@@ -105,13 +105,6 @@ def process_input(image, audio, video, text, chat_history):
             print(f"Failed to save audio: {e}")
             audio_path = None
 
-    # Decode text response
-    text_response = processor.batch_decode(
-        text_ids,
-        skip_special_tokens=True,
-        clean_up_tokenization_spaces=False
-    )[0]
-
     # Clean up text response
     word = "assistant"
     try:
