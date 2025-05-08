@@ -139,4 +139,4 @@ with gr.Blocks(css=custom_css) as demo:
         queue=False
     )
 
-demo.launch(inbrowser=True)
+demo.launch(inbrowser=True, share=True)

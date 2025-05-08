@@ -59,12 +59,12 @@ def process_input(image, audio, video, text, chat_history):
     conversation.append({"role": "user", "content": user_content})
 
     # Prepare for inference
-    text = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
+    text_for_model = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
     audios, images, videos = process_mm_info(conversation, use_audio_in_video=True)
 
     inputs = processor(
-        text=text,
-        audios=audios,
+        text=text_for_model,
+        audio=audios,
         images=images,
         videos=videos,
         return_tensors="pt",
@@ -111,10 +111,11 @@ def process_input(image, audio, video, text, chat_history):
     )[0]
 
     # Clean up text response
-    text_response = text_response.strip()
+    word = "assistant"
+    text_response = text_response.split(word, 1)[1]
 
-    # Format user message for chat history display
-    user_message_for_display = str(text) if text is not None else ""
+    # Format user message for chat history display based on raw input, not chat template
+    user_message_for_display = text if text else ""
     if image is not None:
         user_message_for_display = (user_message_for_display or "Image uploaded") + " [Image]"
     if audio is not None:
@@ -153,19 +154,34 @@ def user_input_to_content(user_input):
 def process_multimodal_textbox(multimodal_input):
     """
     Process input from Gradio's MultimodalTextbox, which returns a dict with 'text' and 'files'.
+    The 'files' list may contain strings (file paths) or dictionaries with 'path' and 'mime_type'.
     Returns: image, audio, video, text
     """
-    text = multimodal_input.get("text", "")
-    image, audio, video = None, None, None
+    image, audio, video, text = None, None, None, ""
 
+    if not isinstance(multimodal_input, dict):
+        # Handle unexpected input (e.g., string)
+        return image, audio, video, text
+
+    text = multimodal_input.get("text", "")
     for file in multimodal_input.get("files", []):
-        file_path = file.get("path", "")
-        mime_type = file.get("mime_type", "")
-        if mime_type.startswith("image"):
-            image = file_path
-        elif mime_type.startswith("audio"):
-            audio = file_path
-        elif mime_type.startswith("video"):
-            video = file_path
+        if isinstance(file, str):
+            # File is a string (file path), assume audio for .wav or check extension
+            if file.lower().endswith(('.wav', '.mp3', '.ogg', '.flac')):
+                audio = file
+            elif file.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                image = file
+            elif file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+                video = file
+        elif isinstance(file, dict):
+            # File is a dictionary with path and mime_type
+            file_path = file.get("path", "")
+            mime_type = file.get("mime_type", "")
+            if mime_type.startswith("image") or file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                image = file_path
+            elif mime_type.startswith("audio") or file_path.lower().endswith(('.wav', '.mp3', '.ogg', '.flac')):
+                audio = file_path
+            elif mime_type.startswith("video") or file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+                video = file_path
 
     return image, audio, video, text
