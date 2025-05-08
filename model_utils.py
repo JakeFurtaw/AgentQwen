@@ -112,7 +112,26 @@ def process_input(image, audio, video, text, chat_history):
 
     # Clean up text response
     word = "assistant"
-    text_response = text_response.split(word, 1)[1]
+    try:
+        text_response = processor.batch_decode(
+            text_ids,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False
+        )[0]
+        if text_response and word in text_response:
+            # Count the number of "assistant" occurrences
+            num_occurrences = text_response.count(word)
+            if num_occurrences > 0:
+                # Use the number of occurrences to split and get the last part
+                parts = text_response.split(word, num_occurrences)
+                text_response = parts[-1].strip() if parts[-1].strip() else parts[-2].strip() if len(
+                    parts) > 1 else text_response.strip()
+            else:
+                text_response = text_response.strip()
+        else:
+            text_response = "No response generated."
+    except Exception as e:
+        text_response = f"Error processing response: {str(e)}"
 
     # Format user message for chat history display based on raw input, not chat template
     user_message_for_display = text if text else ""
