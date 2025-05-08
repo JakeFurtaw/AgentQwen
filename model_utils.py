@@ -11,9 +11,11 @@ model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
     torch_dtype=torch_dtype,
     device_map="auto",
     enable_audio_output=True,
-    attn_implementation="flash_attention_2",
+    # attn_implementation="flash_attention_2",
 )
-processor = Qwen2_5OmniProcessor.from_pretrained("Qwen/Qwen2.5-Omni-7B")
+processor = Qwen2_5OmniProcessor.from_pretrained("Qwen/Qwen2.5-Omni-7B",
+                                                 max_pixels=100000 #had to set to limit pictures and images to avoid CUDA out of memory error
+                                            )
 
 # System prompt
 SYSTEM_PROMPT = {

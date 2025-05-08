@@ -92,7 +92,7 @@ with gr.Blocks(css=custom_css) as demo:
             user_input = gr.MultimodalTextbox(
                 show_label=False,
                 placeholder="Enter your message here...",
-                sources=["upload", "microphone"],
+                sources=["upload", "microphone"]
             )
         audio_output = gr.Audio(label="Agent Qwen's Response", autoplay=True)
         clear_btn = gr.Button("Clear")
@@ -139,4 +139,4 @@ with gr.Blocks(css=custom_css) as demo:
         queue=False
     )
 
-demo.launch(inbrowser=True)
+demo.launch(inbrowser=True, share=True)
