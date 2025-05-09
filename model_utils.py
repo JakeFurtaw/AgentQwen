@@ -14,7 +14,7 @@ model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
     # attn_implementation="flash_attention_2",
 )
 processor = Qwen2_5OmniProcessor.from_pretrained("Qwen/Qwen2.5-Omni-7B",
-                                                 max_pixels=300000) #had to set to limit pictures and images to avoid CUDA out of memory error
+                                                 max_pixels=300000) #had to set to limit pictures and videos to avoid CUDA out of memory error
 
 
 # System prompt
