@@ -11,7 +11,7 @@ model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
     torch_dtype=torch_dtype,
     device_map="auto",
     enable_audio_output=True,
-    # attn_implementation="flash_attention_2",
+    attn_implementation="flash_attention_2",
 )
 processor = Qwen2_5OmniProcessor.from_pretrained("Qwen/Qwen2.5-Omni-7B",
                                                  max_pixels=300000) #had to set to limit pictures and videos to avoid CUDA out of memory error
@@ -113,6 +113,7 @@ def process_input(image, audio, video, text, chat_history):
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False
         )[0]
+        #TODO Add a catch for audio files to transcribe user audio input
         if text_response and word in text_response:
             # Count the number of "assistant" occurrences
             num_occurrences = text_response.count(word)
@@ -133,6 +134,7 @@ def process_input(image, audio, video, text, chat_history):
     if image is not None:
         user_message_for_display = (user_message_for_display or "Image uploaded") + " [Image]"
     if audio is not None:
+        #TODO print out user audio input text here so it can be returned to chatbot interface
         user_message_for_display = (user_message_for_display or "Audio uploaded") + " [Audio]"
     if video is not None:
         user_message_for_display = (user_message_for_display or "Video uploaded") + " [Video]"
