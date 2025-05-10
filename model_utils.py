@@ -105,29 +105,30 @@ def process_input(image, audio, video, text, chat_history):
             print(f"Failed to save audio: {e}")
             audio_path = None
 
-    # Clean up text response
+    # Clean up text response to only output assistant response to chat interface
     word = "assistant"
+    word2 = "user"  #TODO Add a catch to transcribe user audio input when input is an audio file
     try:
-        text_response = processor.batch_decode(
+        assistant_response = processor.batch_decode(
             text_ids,
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False
         )[0]
-        #TODO Add a catch for audio files to transcribe user audio input
-        if text_response and word in text_response:
+
+        if assistant_response and word in assistant_response:
             # Count the number of "assistant" occurrences
-            num_occurrences = text_response.count(word)
+            num_occurrences = assistant_response.count(word)
             if num_occurrences > 0:
                 # Use the number of occurrences to split and get the last part
-                parts = text_response.split(word, num_occurrences)
-                text_response = parts[-1].strip() if parts[-1].strip() else parts[-2].strip() if len(
-                    parts) > 1 else text_response.strip()
+                parts = assistant_response.split(word, num_occurrences)
+                assistant_response = parts[-1].strip() if parts[-1].strip() else parts[-2].strip() if len(
+                    parts) > 1 else assistant_response.strip()
             else:
-                text_response = text_response.strip()
+                assistant_response = assistant_response.strip()
         else:
-            text_response = "No response generated."
+            assistant_response = "No response generated."
     except Exception as e:
-        text_response = f"Error processing response: {str(e)}"
+        assistant_response = f"Error processing response: {str(e)}"
 
     # Format user message for chat history display based on raw input, not chat template
     user_message_for_display = text if text else ""
@@ -145,9 +146,9 @@ def process_input(image, audio, video, text, chat_history):
 
     # Update chat history with messages format
     chat_history.append({"role": "user", "content": user_message_for_display})
-    chat_history.append({"role": "assistant", "content": text_response})
+    chat_history.append({"role": "assistant", "content": assistant_response})
 
-    return chat_history, text_response, audio_path
+    return chat_history, assistant_response, audio_path
 
 
 def user_input_to_content(user_input):
