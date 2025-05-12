@@ -1,5 +1,6 @@
 import torch, tempfile
 import soundfile as sf
+import numpy as np
 from transformers.models.qwen2_5_omni import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
 from qwen_omni_utils import process_mm_info
 
@@ -13,8 +14,9 @@ model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
     enable_audio_output=True,
     attn_implementation="flash_attention_2",
 )
-processor = Qwen2_5OmniProcessor.from_pretrained("Qwen/Qwen2.5-Omni-7B",
-                                                 max_pixels=300000) #had to set to limit pictures and videos to avoid CUDA out of memory error
+processor = Qwen2_5OmniProcessor.from_pretrained(
+    "Qwen/Qwen2.5-Omni-7B",
+    max_pixels=300000) #had to set to limit pictures and videos to avoid CUDA out of memory error
 
 
 # System prompt
@@ -35,7 +37,9 @@ SYSTEM_PROMPT = {
     ]
 }
 
-
+""" 
+Gets input from the front end, adds prompt, and feeds it to the processor. Then sends it to the model for generation
+"""
 def process_input(image, audio, video, text, chat_history):
     # Initialize conversation for this session
     conversation = [SYSTEM_PROMPT]
@@ -78,8 +82,9 @@ def process_input(image, audio, video, text, chat_history):
     try:
         text_ids, audio = model.generate(
             **inputs,
+            # spk="Ethan",
             use_audio_in_video=True,
-            return_audio=True
+            return_audio=True,
         )
     except Exception as e:
         print(f"Audio generation failed: {e}")
@@ -107,45 +112,42 @@ def process_input(image, audio, video, text, chat_history):
 
     # Clean up text response to only output assistant response to chat interface
     word = "assistant"
-    word2 = "user"  #TODO Add a catch to transcribe user audio input when input is an audio file
     try:
-        assistant_response = processor.batch_decode(
+        full_response = processor.batch_decode(
             text_ids,
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False
         )[0]
-
-        if assistant_response and word in assistant_response:
-            # Count the number of "assistant" occurrences
-            num_occurrences = assistant_response.count(word)
+        # Assistant response remains the same
+        if full_response and word in full_response:
+            num_occurrences = full_response.count(word)
             if num_occurrences > 0:
-                # Use the number of occurrences to split and get the last part
-                parts = assistant_response.split(word, num_occurrences)
+                parts = full_response.split(word, num_occurrences)
                 assistant_response = parts[-1].strip() if parts[-1].strip() else parts[-2].strip() if len(
-                    parts) > 1 else assistant_response.strip()
+                    parts) > 1 else full_response.strip()
             else:
-                assistant_response = assistant_response.strip()
+                assistant_response = full_response.strip()
         else:
             assistant_response = "No response generated."
     except Exception as e:
         assistant_response = f"Error processing response: {str(e)}"
 
     # Format user message for chat history display based on raw input, not chat template
-    user_message_for_display = text if text else ""
+    user_message = text if text else ""
     if image is not None:
-        user_message_for_display = (user_message_for_display or "Image uploaded") + " [Image]"
+        user_message = (user_message or "Image uploaded!")
     if audio is not None:
-        #TODO print out user audio input text here so it can be returned to chatbot interface
-        user_message_for_display = (user_message_for_display or "Audio uploaded") + " [Audio]"
+        #print(np.dtype(audios)) float64
+        user_message = (user_message or "Audio uploaded!")
     if video is not None:
-        user_message_for_display = (user_message_for_display or "Video uploaded") + " [Video]"
+        user_message = (user_message or "Video uploaded!")
 
     # If empty, provide a default message
-    if not user_message_for_display.strip():
-        user_message_for_display = "Multimodal input"
+    if not user_message.strip():
+        user_message = "Multimodal input"
 
     # Update chat history with messages format
-    chat_history.append({"role": "user", "content": user_message_for_display})
+    chat_history.append({"role": "user", "content": user_message})
     chat_history.append({"role": "assistant", "content": assistant_response})
 
     return chat_history, assistant_response, audio_path
