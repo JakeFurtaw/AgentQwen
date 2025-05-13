@@ -87,7 +87,7 @@ with gr.Blocks(css=custom_css) as demo:
             "You can interact with Agent Qwen using text, images, audio, or video files. Provide as much "
             "detail about your device issue as possible. Note: Audio responses may not always be available."
         )
-        chatbot = gr.Chatbot(label="Agent Qwen", height="80vh", autoscroll=True, type="messages")
+        chatbot = gr.Chatbot(label="Agent Qwen", height="70vh", autoscroll=True, type="messages")
         with gr.Row():
             user_input = gr.MultimodalTextbox(
                 show_label=False,

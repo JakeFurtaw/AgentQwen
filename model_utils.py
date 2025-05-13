@@ -82,9 +82,9 @@ def process_input(image, audio, video, text, chat_history):
     try:
         text_ids, audio = model.generate(
             **inputs,
-            # spk="Ethan",
             use_audio_in_video=True,
             return_audio=True,
+            speaker="Ethan",  # Set Speaker to Male Voice
         )
     except Exception as e:
         print(f"Audio generation failed: {e}")
