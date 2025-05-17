@@ -11,12 +11,11 @@ model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
     "Qwen/Qwen2.5-Omni-7B",
     torch_dtype=torch_dtype,
     device_map="auto",
-    enable_audio_output=True,
-    attn_implementation="flash_attention_2",
+    enable_audio_output=True
 )
 processor = Qwen2_5OmniProcessor.from_pretrained(
     "Qwen/Qwen2.5-Omni-7B",
-    max_pixels=300000) #had to set to limit pictures and videos to avoid CUDA out of memory error
+    max_pixels=100000) #had to set to limit pictures and videos to avoid CUDA out of memory error
 
 
 # System prompt
@@ -37,12 +36,28 @@ SYSTEM_PROMPT = {
     ]
 }
 
+AUDIO_TRANSCRIPTION_PROMPT = {
+    "role": "system",
+    "content": [
+        {
+            "type": "text",
+            "text": (
+                "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, "
+                "capable of perceiving auditory and visual inputs, as well as generating text and speech."
+                "When you receive audio you are to transcribe the users audio input to text and return it as is."
+                "Do not make any changes to the users audio just return the text transcription back."
+            ),
+        }
+    ]
+}
+
 """ 
 Gets input from the front end, adds prompt, and feeds it to the processor. Then sends it to the model for generation
 """
 def process_input(image, audio, video, text, chat_history):
     # Initialize conversation for this session
     conversation = [SYSTEM_PROMPT]
+    user_input_transcription = [AUDIO_TRANSCRIPTION_PROMPT]
 
     # Add previous chat history
     if isinstance(chat_history, list):
@@ -80,12 +95,13 @@ def process_input(image, audio, video, text, chat_history):
 
     # Generate response
     try:
-        text_ids, audio = model.generate(
-            **inputs,
-            use_audio_in_video=True,
-            return_audio=True,
-            speaker="Ethan",  # Set Speaker to Male Voice
-        )
+        with torch.no_grad():
+            text_ids, audio = model.generate(
+                **inputs,
+                use_audio_in_video=True,
+                return_audio=True,
+                speaker="Ethan",  # Set Speaker to Male Voice
+            )
     except Exception as e:
         print(f"Audio generation failed: {e}")
         text_ids = model.generate(
