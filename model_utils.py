@@ -1,12 +1,18 @@
-import torch, tempfile
+import torch
+import tempfile
 import soundfile as sf
 import numpy as np
+from transformers import pipeline
 from transformers.models.qwen2_5_omni import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
 from qwen_omni_utils import process_mm_info
+from dotenv import load_dotenv
+
+load_dotenv()
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
 
+# Initialize Qwen model and processor
 model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
     "Qwen/Qwen2.5-Omni-7B",
     torch_dtype=torch_dtype,
@@ -15,18 +21,27 @@ model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
 )
 processor = Qwen2_5OmniProcessor.from_pretrained(
     "Qwen/Qwen2.5-Omni-7B",
-    max_pixels=100000) #had to set to limit pictures and videos to avoid CUDA out of memory error
+    max_pixels=100000
+)
 
+# Initialize Whisper pipeline
+whisper = pipeline(
+    "automatic-speech-recognition",
+    model="openai/whisper-large-v3-turbo",
+    device=device,
+    torch_dtype=torch_dtype,
+    generate_kwargs={"language": "en"}  # Force English transcription
+)
 
-# System prompt
+# System prompt for Qwen
 SYSTEM_PROMPT = {
     "role": "system",
     "content": [
         {
             "type": "text",
             "text": (
-                "You are Agent Qwen, a virtual Geek Squad Agent who can understand text, audio, and video and "
-                "perceive auditory and visual inputs, as well as generate text and speech. "
+                "You are Agent Qwen, a virtual human Geek Squad Agent developed by the Qwen Team, Alibaba Group,"
+                "who can understand text, audio, and video and perceive auditory and visual inputs, as well as generate text and speech. "
                 "Your goal is to learn about the customer's issue with their device. Then generate a report "
                 "based on what the customer says so that another agent can work on the computer and fix the issue. "
                 "Strictly adhere to these guidelines and make sure to summarize what the customer has said the issue is. "
@@ -36,28 +51,9 @@ SYSTEM_PROMPT = {
     ]
 }
 
-AUDIO_TRANSCRIPTION_PROMPT = {
-    "role": "system",
-    "content": [
-        {
-            "type": "text",
-            "text": (
-                "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, "
-                "capable of perceiving auditory and visual inputs, as well as generating text and speech."
-                "When you receive audio you are to transcribe the users audio input to text and return it as is."
-                "Do not make any changes to the users audio just return the text transcription back."
-            ),
-        }
-    ]
-}
-
-""" 
-Gets input from the front end, adds prompt, and feeds it to the processor. Then sends it to the model for generation
-"""
 def process_input(image, audio, video, text, chat_history):
     # Initialize conversation for this session
     conversation = [SYSTEM_PROMPT]
-    user_input_transcription = [AUDIO_TRANSCRIPTION_PROMPT]
 
     # Add previous chat history
     if isinstance(chat_history, list):
@@ -67,11 +63,23 @@ def process_input(image, audio, video, text, chat_history):
     else:
         chat_history = []
 
-    # Combine multimodal inputs
+    # Transcribe audio using Whisper if present
+    transcribed_text = None
+    if audio is not None:
+        try:
+            # Transcribe audio file
+            result = whisper(audio)
+            transcribed_text = result["text"]
+            print(f"Transcribed text: {transcribed_text}")
+        except Exception as e:
+            print(f"Whisper transcription failed: {e}")
+            transcribed_text = "Error transcribing audio."
+
+    # Combine multimodal inputs, exclude audio for Qwen processing
     user_input = {
-        "text": text,
+        "text": text + transcribed_text if transcribed_text is not None or "" else text,
         "image": image if image is not None else None,
-        "audio": audio if audio is not None else None,
+        "audio": None,  # Set to None to avoid Qwen audio processing issues
         "video": video if video is not None else None
     }
 
@@ -81,7 +89,7 @@ def process_input(image, audio, video, text, chat_history):
 
     # Prepare for inference
     text_for_model = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
-    audios, images, videos = process_mm_info(conversation, use_audio_in_video=True)
+    audios, images, videos = process_mm_info(conversation, use_audio_in_video=False)  # Disable audio in video
 
     inputs = processor(
         text=text_for_model,
@@ -91,6 +99,7 @@ def process_input(image, audio, video, text, chat_history):
         return_tensors="pt",
         padding=True
     )
+
     inputs = inputs.to(model.device).to(model.dtype)
 
     # Generate response
@@ -98,15 +107,15 @@ def process_input(image, audio, video, text, chat_history):
         with torch.no_grad():
             text_ids, audio = model.generate(
                 **inputs,
-                use_audio_in_video=True,
+                use_audio_in_video=False,  # Disable audio in video
                 return_audio=True,
-                speaker="Ethan",  # Set Speaker to Male Voice
+                speaker="Ethan",
             )
     except Exception as e:
         print(f"Audio generation failed: {e}")
         text_ids = model.generate(
             **inputs,
-            use_audio_in_video=True,
+            use_audio_in_video=False,
             return_audio=False
         )
         audio = None
@@ -126,7 +135,7 @@ def process_input(image, audio, video, text, chat_history):
             print(f"Failed to save audio: {e}")
             audio_path = None
 
-    # Clean up text response to only output assistant response to chat interface
+    # Clean up text response
     word = "assistant"
     try:
         full_response = processor.batch_decode(
@@ -134,7 +143,6 @@ def process_input(image, audio, video, text, chat_history):
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False
         )[0]
-        # Assistant response remains the same
         if full_response and word in full_response:
             num_occurrences = full_response.count(word)
             if num_occurrences > 0:
@@ -148,26 +156,23 @@ def process_input(image, audio, video, text, chat_history):
     except Exception as e:
         assistant_response = f"Error processing response: {str(e)}"
 
-    # Format user message for chat history display based on raw input, not chat template
+    # Format user message for chat history display
     user_message = text if text else ""
     if image is not None:
         user_message = (user_message or "Image uploaded!")
     if audio is not None:
-        #print(np.dtype(audios)) float64
-        user_message = (user_message or "Audio uploaded!")
+        user_message = (transcribed_text if transcribed_text is not None or "" else "")
     if video is not None:
         user_message = (user_message or "Video uploaded!")
 
-    # If empty, provide a default message
     if not user_message.strip():
         user_message = "Multimodal input"
 
-    # Update chat history with messages format
+    # Update chat history
     chat_history.append({"role": "user", "content": user_message})
     chat_history.append({"role": "assistant", "content": assistant_response})
 
     return chat_history, assistant_response, audio_path
-
 
 def user_input_to_content(user_input):
     if isinstance(user_input, str):
@@ -185,23 +190,15 @@ def user_input_to_content(user_input):
         return content
     return user_input
 
-
 def process_multimodal_textbox(multimodal_input):
-    """
-    Process input from Gradio's MultimodalTextbox, which returns a dict with 'text' and 'files'.
-    The 'files' list may contain strings (file paths) or dictionaries with 'path' and 'mime_type'.
-    Returns: image, audio, video, text
-    """
     image, audio, video, text = None, None, None, ""
 
     if not isinstance(multimodal_input, dict):
-        # Handle unexpected input (e.g., string)
         return image, audio, video, text
 
     text = multimodal_input.get("text", "")
     for file in multimodal_input.get("files", []):
         if isinstance(file, str):
-            # File is a string (file path), assume audio for .wav or check extension
             if file.lower().endswith(('.wav', '.mp3', '.ogg', '.flac')):
                 audio = file
             elif file.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
@@ -209,7 +206,6 @@ def process_multimodal_textbox(multimodal_input):
             elif file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
                 video = file
         elif isinstance(file, dict):
-            # File is a dictionary with path and mime_type
             file_path = file.get("path", "")
             mime_type = file.get("mime_type", "")
             if mime_type.startswith("image") or file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
