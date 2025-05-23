@@ -1,7 +1,6 @@
 import torch
 import tempfile
 import soundfile as sf
-import numpy as np
 from transformers import pipeline
 from transformers.models.qwen2_5_omni import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
 from qwen_omni_utils import process_mm_info
@@ -42,6 +41,7 @@ SYSTEM_PROMPT = {
             "text": (
                 "You are Agent Qwen, a virtual human Geek Squad Agent developed by the Qwen Team, Alibaba Group,"
                 "who can understand text, audio, and video and perceive auditory and visual inputs, as well as generate text and speech. "
+                "If the customer doesnt state their name at the beginning of the interaction you must ask them and call them by their name."
                 "Your goal is to learn about the customer's issue with their device. Then generate a report "
                 "based on what the customer says so that another agent can work on the computer and fix the issue. "
                 "Strictly adhere to these guidelines and make sure to summarize what the customer has said the issue is. "
@@ -77,9 +77,9 @@ def process_input(image, audio, video, text, chat_history):
 
     # Combine multimodal inputs, exclude audio for Qwen processing
     user_input = {
-        "text": text + transcribed_text if transcribed_text is not None or "" else text,
+        "text": text if text is not None or "" else None,
         "image": image if image is not None else None,
-        "audio": None,  # Set to None to avoid Qwen audio processing issues
+        "audio": audio if audio is not None else None,
         "video": video if video is not None else None
     }
 
@@ -89,7 +89,7 @@ def process_input(image, audio, video, text, chat_history):
 
     # Prepare for inference
     text_for_model = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
-    audios, images, videos = process_mm_info(conversation, use_audio_in_video=False)  # Disable audio in video
+    audios, images, videos = process_mm_info(conversation, use_audio_in_video=True)
 
     inputs = processor(
         text=text_for_model,
@@ -107,7 +107,7 @@ def process_input(image, audio, video, text, chat_history):
         with torch.no_grad():
             text_ids, audio = model.generate(
                 **inputs,
-                use_audio_in_video=False,  # Disable audio in video
+                use_audio_in_video=True,
                 return_audio=True,
                 speaker="Ethan",
             )
@@ -116,7 +116,7 @@ def process_input(image, audio, video, text, chat_history):
         text_ids = model.generate(
             **inputs,
             use_audio_in_video=False,
-            return_audio=False
+            return_audio=False,
         )
         audio = None
 
@@ -157,11 +157,11 @@ def process_input(image, audio, video, text, chat_history):
         assistant_response = f"Error processing response: {str(e)}"
 
     # Format user message for chat history display
-    user_message = text if text else ""
+    user_message = (text if text is not None or "" else "")
     if image is not None:
         user_message = (user_message or "Image uploaded!")
     if audio is not None:
-        user_message = (transcribed_text if transcribed_text is not None or "" else "")
+        user_message = (transcribed_text if transcribed_text is not None or "" else "Audio uploaded!")
     if video is not None:
         user_message = (user_message or "Video uploaded!")
 
