@@ -1,5 +1,5 @@
 import gradio as gr
-from model_utils import process_input, process_multimodal_textbox
+from model_utils import process_input, process_multimodal_textbox, clear_audio_files
 
 custom_css = """
 /* General container styling */
@@ -129,6 +129,7 @@ with gr.Blocks(css=custom_css) as demo:
 
 
     def clear_chat():
+        clear_audio_files()
         return [], {"text": "", "files": []}, None
 
 

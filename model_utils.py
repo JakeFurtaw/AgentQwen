@@ -1,5 +1,4 @@
-import torch
-import tempfile
+import shutil, os, torch, tempfile
 import soundfile as sf
 from transformers import pipeline
 from transformers.models.qwen2_5_omni import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
@@ -7,6 +6,7 @@ from qwen_omni_utils import process_mm_info
 from dotenv import load_dotenv
 
 load_dotenv()
+AUDIO_FILES_DIR = "audio_files"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
@@ -29,6 +29,7 @@ whisper = pipeline(
     model="openai/whisper-large-v3-turbo",
     device_map="auto",
     torch_dtype=torch_dtype,
+    return_timestamps=True,
     generate_kwargs={"language": "en"}
 )
 
@@ -78,6 +79,17 @@ def save_audio_to_temp_file(audio_data):
         print(f"Failed to save audio: {e}")
         return None
 
+def clear_audio_files():
+    """Delete and recreate the audio_files directory."""
+    try:
+        if os.path.exists(AUDIO_FILES_DIR):
+            shutil.rmtree(AUDIO_FILES_DIR)
+            print(f"Deleted directory {AUDIO_FILES_DIR}")
+        os.makedirs(AUDIO_FILES_DIR)
+        print(f"Recreated directory {AUDIO_FILES_DIR}")
+    except Exception as e:
+        print(f"Error managing audio_files directory: {e}")
+
 def decode_model_response(text_ids):
     """Decode model-generated text IDs to a clean response."""
     try:
@@ -86,8 +98,12 @@ def decode_model_response(text_ids):
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False
         )[0]
-        parts = full_response.split("assistant", full_response.count("assistant"))
-        return parts[-1].strip() or parts[-2].strip() if len(parts) > 1 else full_response.strip()
+        # Remove role markers and clean up
+        for marker in ["assistant", "Human", "system", "<|", "|>"]:
+            full_response = full_response.replace(marker, "").strip()
+        # Split on any remaining role-like patterns and take the last meaningful part
+        parts = [part.strip() for part in full_response.split("\n") if part.strip()]
+        return parts[-1] if parts else "No response generated."
     except Exception as e:
         return f"Error processing response: {str(e)}"
 
