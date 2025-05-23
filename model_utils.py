@@ -20,6 +20,7 @@ model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
 )
 processor = Qwen2_5OmniProcessor.from_pretrained(
     "Qwen/Qwen2.5-Omni-7B",
+    device_map="auto",
     max_pixels=100000
 )
 
@@ -27,7 +28,7 @@ processor = Qwen2_5OmniProcessor.from_pretrained(
 whisper = pipeline(
     "automatic-speech-recognition",
     model="openai/whisper-large-v3-turbo",
-    device=device,
+    device_map="auto",
     torch_dtype=torch_dtype,
     generate_kwargs={"language": "en"}  # Force English transcription
 )
